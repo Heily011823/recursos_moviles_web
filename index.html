@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ResourceHub · Inventario de recursos móviles</title>
+  <!-- Hoja de estilos externa -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ============================================================
+       BARRA LATERAL: usuario, ubicación, modo demo y reglas
+       ============================================================ -->
+  <aside>
+
+    <!-- Marca / logo de la aplicación -->
+    <div class="brand">
+      <div class="logo">📦</div>
+      <div>
+        <h1>ResourceHub</h1>
+        <small>Inventario de recursos móviles</small>
+      </div>
+    </div>
+
+    <!-- Caja de usuario y reputación -->
+    <div class="box">
+      <h3>👤 Usuario</h3>
+      <!-- Etiqueta oculta visualmente (solo para lectores de pantalla) -->
+      <label for="user" class="sr">Nombre de usuario</label>
+      <input type="text" id="user" placeholder="Tu nombre (obligatorio)" maxlength="24">
+
+      <!-- Número y barra de reputación (se actualizan desde script.js) -->
+      <div class="rep" style="margin-top:12px">
+        <div class="num" id="repNum">0</div>
+        <div style="flex:1">
+          <div style="font-size:11.5px;color:#94a3b8;margin-bottom:4px">Reputación</div>
+          <div class="bar"><i id="repBar"></i></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Caja de geolocalización y modo demo -->
+    <div class="box">
+      <h3>📍 Ubicación</h3>
+      <div class="geo-line" id="geoInfo">Sin ubicación todavía.</div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" id="btnGeo">Obtener ubicación</button>
+      </div>
+      <!-- Modo demo: acelera el tiempo (1 segundo real = 1 minuto simulado) -->
+      <label class="switch">
+        <span>Modo demo (1 s = 1 min)</span>
+        <input type="checkbox" id="demo" checked>
+      </label>
+    </div>
+
+    <!-- Resumen de las reglas del sistema -->
+    <div class="box">
+      <h3>📜 Reglas del sistema</h3>
+      <ul class="rules">
+        <li>Máx. <b>4 recursos</b> en uso por persona.</li>
+        <li>Cada tipo tiene un <b>tiempo máximo</b>; pasarse resta reputación.</li>
+        <li>La reputación empieza en <b>0</b>: devolver a tiempo suma 10 y tarde resta 15.</li>
+        <li>Los <b>críticos</b> (⚠) exigen reputación ≥ 40.</li>
+      </ul>
+    </div>
+
+  </aside>
+
+  <!-- ============================================================
+       CONTENIDO PRINCIPAL
+       ============================================================ -->
+  <main>
+
+    <!-- Encabezado de la página -->
+    <header class="top">
+      <div>
+        <h2>Panel de control de recursos</h2>
+        <p>Arrastra los recursos entre <b>Disponible</b> y <b>En uso</b>. Todo se guarda en tu navegador.</p>
+      </div>
+    </header>
+
+    <!-- Indicadores (KPIs): totales, disponibles, en uso y con retraso -->
+    <section class="kpis">
+      <div class="kpi">
+        <div class="ic k">🧰</div>
+        <div><div class="v" id="kTotal">0</div><div class="l">Recursos totales</div></div>
+      </div>
+      <div class="kpi">
+        <div class="ic g">📥</div>
+        <div><div class="v" id="kAvail">0</div><div class="l">Disponibles</div></div>
+      </div>
+      <div class="kpi">
+        <div class="ic b">⚡</div>
+        <div><div class="v" id="kUse">0</div><div class="l">En uso</div></div>
+      </div>
+      <div class="kpi">
+        <div class="ic w">⏰</div>
+        <div><div class="v" id="kLate">0</div><div class="l">Con retraso</div></div>
+      </div>
+    </section>
+
+    <!-- Tableros de arrastrar y soltar -->
+    <section class="boards">
+
+      <!-- Zona: recursos disponibles -->
+      <section class="panel">
+        <header>
+          <h3><span class="dot g"></span>Disponible</h3>
+          <span class="count g" id="cAvail">0</span>
+        </header>
+        <!-- data-target indica a qué estado pasa el recurso al soltarlo aquí -->
+        <div class="zone" id="zAvail" data-target="avail"></div>
+      </section>
+
+      <!-- Zona: recursos en uso -->
+      <section class="panel">
+        <header>
+          <h3><span class="dot b"></span>En uso</h3>
+          <span class="count b" id="cUse">0</span>
+        </header>
+        <div class="zone" id="zUse" data-target="use"></div>
+      </section>
+
+    </section>
+
+    <!-- Parte inferior: gráfico y bitácora -->
+    <section class="bottom">
+
+      <!-- Gráfico dibujado con Canvas -->
+      <section class="panel">
+        <header><h3>📊 Recursos en uso (Canvas)</h3></header>
+        <canvas id="chart" aria-label="Gráfico de recursos en uso"></canvas>
+      </section>
+
+      <!-- Historial de movimientos -->
+      <section class="panel">
+        <header><h3>🧾 Bitácora</h3></header>
+        <ul class="log" id="log"></ul>
+      </section>
+
+    </section>
+  </main>
+
+  <!-- Contenedor de las notificaciones emergentes (toasts) -->
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Lógica de la aplicación (al final para que el HTML ya exista) -->
+  <script src="script.js"></script>
+</body>
+</html>
