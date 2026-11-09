@@ -46,10 +46,25 @@ let S = load();
 function load(){
   try{
     const raw = localStorage.getItem(KEY);
-    if(raw) return JSON.parse(raw);
+    if(raw){
+      const st = JSON.parse(raw);
+      // Migración: antes la reputación era una sola para todo el navegador
+      if(!st.reps){
+        st.reps = {};
+        if(st.user && st.user.trim() && st.rep) st.reps[userKey(st.user)] = st.rep;
+      }
+      delete st.rep;
+      return st;
+    }
   }catch(e){}
-  return {items:DEFAULT_ITEMS(), user:'', rep:0, log:[], demo:true};
+  return {items:DEFAULT_ITEMS(), user:'', reps:{}, log:[], demo:true};
 }
+
+// Clave normalizada de un nombre (sin espacios sobrantes ni mayúsculas)
+function userKey(n){ return String(n||'').trim().toLowerCase(); }
+
+// La reputación es POR USUARIO: cambiar de nombre no borra una mala reputación
+function getRep(){ return S.reps[userKey(S.user)] || 0; }
 
 // Guarda el estado actual en el navegador
 function save(){
@@ -115,12 +130,12 @@ function checkoutError(it){
   if(!S.user.trim()) return 'Escribe tu nombre antes de tomar un recurso.';
 
   // Regla 2: no superar el máximo de recursos por persona
-  const mine = S.items.filter(x=>x.state==='use' && x.holder===S.user.trim()).length;
+  const mine = S.items.filter(x=>x.state==='use' && userKey(x.holder)===userKey(S.user)).length;
   if(mine >= MAX_PER_USER) return `Límite alcanzado: ya tienes ${MAX_PER_USER} recursos en uso.`;
 
   // Regla 3: los equipos críticos exigen reputación mínima
   if(T.critical){
-    if(S.rep < MIN_REP_CRITICAL) return `Reputación baja (${S.rep}). Los equipos críticos requieren ≥ ${MIN_REP_CRITICAL}.`;
+    if(getRep() < MIN_REP_CRITICAL) return `Reputación baja (${getRep()}). Los equipos críticos requieren ≥ ${MIN_REP_CRITICAL}.`;
   }
   return null;
 }
@@ -149,17 +164,27 @@ function moveItem(id,target){
 
   }else{
     // ----- DEVOLVER el recurso -----
+    // Solo puede devolverlo la persona que lo tiene
+    if(userKey(it.holder)!==userKey(S.user)){
+      const msg = `Solo ${it.holder} puede devolver este recurso.`;
+      toast('⛔ '+msg,'err');
+      addLog(`Bloqueado: ${it.name} — ${msg}`,true);
+      render();
+      return;
+    }
+    const hk = userKey(it.holder);
+    const hrep = S.reps[hk] || 0;
     const late = isLate(it);
     const mins = Math.round(elapsedMin(it));
 
     if(late){
       // Devolución tardía: resta 15 de reputación
-      S.rep = clamp(S.rep-15,0,100);
+      S.reps[hk] = clamp(hrep-15,0,100);
       addLog(`${it.holder} devolvió ${it.name} con retraso (${mins} min, máx ${T.max}) −15 rep`,true);
       toast(`⏰ Devolución tardía: −15 de reputación`,'warn');
     }else{
       // Devolución a tiempo: suma 10 de reputación
-      S.rep = clamp(S.rep+10,0,100);
+      S.reps[hk] = clamp(hrep+10,0,100);
       addLog(`${it.holder} devolvió ${it.name} a tiempo (${mins} min) +10 rep`);
       toast(`👍 Devuelto a tiempo: +10 de reputación`,'ok');
     }
@@ -181,10 +206,12 @@ function cardHTML(it){
   const T    = TYPES[it.type];
   const use  = it.state==='use';
   const late = isLate(it);
+  // Crítico bloqueado: disponible pero la reputación del usuario no alcanza
+  const locked = !use && T.critical && getRep() < MIN_REP_CRITICAL;
 
   // Etiqueta de la esquina: "crítico" o el nombre del tipo
   const crit = T.critical
-    ? `<span class="tag crit">⚠ crítico</span>`
+    ? `<span class="tag crit">${locked?'🔒 requiere rep ≥ '+MIN_REP_CRITICAL:'⚠ crítico'}</span>`
     : `<span class="tag">${T.label}</span>`;
 
   // Temporizador y barra de progreso (solo si está en uso)
@@ -195,7 +222,7 @@ function cardHTML(it){
              <div class="tbar"><i data-b="${it.id}" style="width:${clamp(e/T.max*100,0,100)}%"></i></div>`;
   }
 
-  return `<article class="res ${use?'use':'avail'} ${late?'late':''}" draggable="true" data-id="${it.id}">
+  return `<article class="res ${use?'use':'avail'} ${late?'late':''} ${locked?'locked':''}" draggable="true" data-id="${it.id}">
     ${crit}
     <div class="icon">${T.icon}</div>
     <div class="name">${esc(it.name)}</div>
@@ -228,8 +255,13 @@ function render(){
   $('kLate').textContent  = us.filter(isLate).length;
 
   // Reputación (número y barra)
-  $('repNum').textContent = S.rep;
-  $('repBar').style.width = S.rep+'%';
+  $('repNum').textContent = getRep();
+  $('repBar').style.width = getRep()+'%';
+
+  // No se puede cambiar de nombre mientras se tengan recursos en uso
+  const holding = us.some(i=>userKey(i.holder)===userKey(S.user));
+  $('user').disabled = holding;
+  $('user').title = holding ? 'Devuelve tus recursos para cambiar de usuario' : '';
 
   // Bitácora con la hora de cada movimiento
   $('log').innerHTML = S.log.map(l=>{
@@ -336,6 +368,7 @@ $('user').value = S.user;
 $('user').addEventListener('input',e=>{
   S.user = e.target.value;
   save();
+  render();   // la reputación y los equipos desbloqueados dependen del usuario
 });
 
 // Interruptor del modo demo
@@ -383,8 +416,15 @@ $('btnGeo').addEventListener('click',()=>{
     },
     // Error: permiso denegado o no disponible
     err=>{
-      $('geoInfo').textContent = 'No se pudo obtener la ubicación.';
-      toast('Permiso de ubicación denegado o no disponible.','err');
+      // err.code: 1 = permiso denegado, 2 = posición no disponible, 3 = tiempo agotado
+      const msgs = {
+        1: 'Permiso de ubicación denegado. Actívalo en el navegador.',
+        2: 'Ubicación no disponible en este momento.',
+        3: 'Tiempo agotado al buscar la ubicación. Intenta de nuevo.'
+      };
+      const m = msgs[err.code] || 'No se pudo obtener la ubicación.';
+      $('geoInfo').textContent = m;
+      toast('📍 '+m,'err');
     },
     // Opciones: alta precisión y máximo 10 segundos de espera
     {enableHighAccuracy:true, timeout:10000}
